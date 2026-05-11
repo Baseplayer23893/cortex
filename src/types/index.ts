@@ -5,6 +5,7 @@ export interface Note {
   status: 'inbox' | 'processed' | 'archived'
   tags?: string[]
   wikiLinks?: string[]
+  relatedWikiSlug?: string  // if linked to a wiki page
   aiProcessedAt?: Date
 }
 
@@ -13,6 +14,7 @@ export interface JournalEntry {
   date: string
   content: string
   wordCount: number
+  related?: string[]  // slugs of related wiki pages
   createdAt: Date
   updatedAt: Date
   aiPromptUsed?: string
@@ -24,6 +26,7 @@ export interface WikiPage {
   title: string
   content: string
   tags?: string[]
+  related?: string[]  // slugs of related wiki pages
   createdAt: Date
   updatedAt: Date
   createdBy: 'user' | 'ai'
