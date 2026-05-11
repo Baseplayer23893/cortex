@@ -1,5 +1,90 @@
 import { supabase } from './supabase'
 
+export interface AnalysisResult {
+  summary: string
+  suggestedLinks: string[]
+  suggestedTags: string[]
+  extractedSections?: {
+    title: string
+    content: string
+  }[]
+}
+
+export async function analyzeWikiContent(
+  content: string,
+  currentTitle: string,
+  existingPages: { title: string; slug: string; content: string }[]
+): Promise<AnalysisResult> {
+  const prompt = `You are analyzing a wiki note. 
+Current note title: "${currentTitle}"
+Current note content:
+${content}
+
+Existing wiki pages:
+${(existingPages || [])
+  .filter(p => p.title !== currentTitle)
+  .map(p => `- ${p.title}: ${(p.content || '').slice(0, 100)}`)
+  .join('\n') || '(none)'}
+
+Return ONLY valid JSON with this structure:
+{
+  "summary": "one sentence summary of this note",
+  "suggestedLinks": ["list of existing wiki page titles that are semantically related (even if not explicitly mentioned)"],
+  "suggestedTags": ["relevant tags for this content"],
+  "extractedSections": [{"title": "suggested sub-page title", "content": "the content that should be extracted (if any section is 200+ words)"}]
+}
+
+Focus on finding semantic connections even when titles don't match exactly.`
+
+  try {
+    const { data, error } = await supabase.functions.invoke('cortex-brain', {
+      body: { 
+        prompt, 
+        context: {
+          wikiPages: [],
+          journalEntries: [],
+          tasks: [],
+          timetableBlocks: [],
+          protocolEntries: [],
+        }
+      },
+    })
+
+    if (error) {
+      throw new Error(error.message || 'Function invocation failed')
+    }
+
+    return data as AnalysisResult
+  } catch (error) {
+    console.error('AI analysis error:', error)
+    return { summary: '', suggestedLinks: [], suggestedTags: [] }
+  }
+}
+
+export async function findBacklinks(
+  currentTitle: string,
+  currentSlug: string,
+  allPages: { title: string; slug: string; content: string }[]
+): Promise<{ title: string; slug: string }[]> {
+  const backlinks: { title: string; slug: string }[] = []
+  const searchTerm = (currentTitle || '').toLowerCase()
+  const searchSlug = (currentSlug || '').toLowerCase()
+
+  ;(allPages || []).forEach(page => {
+    if (page.slug === currentSlug) return
+    
+    const content = (page.content || '').toLowerCase()
+    const titleMatch = content.includes(searchTerm)
+    const slugMatch = content.includes(searchSlug)
+    
+    if (titleMatch || slugMatch) {
+      backlinks.push({ title: page.title, slug: page.slug })
+    }
+  })
+
+  return backlinks
+}
+
 export interface BrainSource {
   type: 'wiki' | 'journal' | 'task'
   id: string | number
