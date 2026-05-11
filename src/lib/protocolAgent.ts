@@ -2,6 +2,27 @@ import { db } from '../db/db'
 import { useSettingsStore, useWikiStore, useProtocolStore, useAILogsStore } from '../store'
 import { slugify } from '../lib/utils'
 
+function getApiUrl(path: string): string {
+  const { apiBaseUrl } = useSettingsStore.getState()
+  
+  if (apiBaseUrl.includes('api.nvidia.com') || apiBaseUrl.includes('nim')) {
+    return `/api/nvidia/v1${path}`
+  }
+  
+  const baseUrl = apiBaseUrl.endsWith('/') ? apiBaseUrl.slice(0, -1) : apiBaseUrl
+  return `${baseUrl}${path}`
+}
+
+function getModel(): string {
+  const { apiBaseUrl, aiModel } = useSettingsStore.getState()
+  
+  if (apiBaseUrl.includes('api.nvidia.com') || apiBaseUrl.includes('nim')) {
+    return 'minimaxai/minimax-m2.7'
+  }
+  
+  return aiModel
+}
+
 const WIKI_TEMPLATE = `---
 title: {{title}}
 date: {{date}}
@@ -58,14 +79,14 @@ Analyze the note and return ONLY a valid JSON object with this structure:
 
 For relatedPageSlugs, find the EXACT slugs from existing pages that are semantically related (even if titles don't match exactly). If fewer than 2 related pages exist, use empty strings.`
 
-    const res = await fetch(`${baseUrl}/chat/completions`, {
+    const res = await fetch(getApiUrl('/chat/completions'), {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${apiKey}`,
       },
       body: JSON.stringify({
-        model: aiModel,
+        model: getModel(),
         messages: [{ role: 'system', content: prompt }],
       }),
     })

@@ -1,0 +1,8 @@
+{
+  "projectId": "cortex",
+  "functions": {
+    "cortex-brain": {
+      "verify_jwt": false
+    }
+  }
+}

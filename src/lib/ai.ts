@@ -1,18 +1,28 @@
 import { useSettingsStore } from '../store'
 
+function getApiUrl(path: string): string {
+  const { apiBaseUrl } = useSettingsStore.getState()
+  
+  if (apiBaseUrl.includes('api.nvidia.com') || apiBaseUrl.includes('nim')) {
+    return `/api/nvidia${path}`
+  }
+  
+  const baseUrl = apiBaseUrl.endsWith('/') ? apiBaseUrl.slice(0, -1) : apiBaseUrl
+  return `${baseUrl}${path}`
+}
+
 export async function callAI(
   messages: { role: string; content: string }[],
   systemPrompt: string,
   onChunk?: (text: string) => void
 ): Promise<string> {
-  const { apiKey, apiBaseUrl, aiModel } = useSettingsStore.getState()
+  const { apiKey, aiModel } = useSettingsStore.getState()
 
   if (!apiKey) {
     throw new Error('No API key set. Add one in Settings.')
   }
 
-  const baseUrl = apiBaseUrl.endsWith('/') ? apiBaseUrl.slice(0, -1) : apiBaseUrl
-  const url = `${baseUrl}/chat/completions`
+  const url = getApiUrl('/chat/completions')
 
   const res = await fetch(url, {
     method: 'POST',
@@ -21,7 +31,7 @@ export async function callAI(
       'Authorization': `Bearer ${apiKey}`,
     },
     body: JSON.stringify({
-      model: aiModel,
+      model: getModel(),
       stream: !!onChunk,
       messages: [
         { role: 'system', content: systemPrompt },
