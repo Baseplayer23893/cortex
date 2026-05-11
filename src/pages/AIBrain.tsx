@@ -151,7 +151,7 @@ export default function AIBrain() {
         {messages.length === 0 ? (
           <div className="text-center py-8">
             <div className="inline-block p-4 border border-[var(--accent)] rounded-lg bg-[var(--accent-soft)] text-left">
-              <p className="text-sm text-[var(--accent)] mb-2">> Cortex v1.0 initialized</p>
+              <p className="text-sm text-[var(--accent)] mb-2">&gt; Cortex v1.0 initialized</p>
               <p className="text-xs text-[var(--text-secondary)]">
                 I have access to:<br/>
                 • {wikiPages.length} wiki pages<br/>
@@ -159,7 +159,7 @@ export default function AIBrain() {
                 • {tasks.filter(t => t.status !== 'done').length} active tasks<br/>
                 • {protocolEntries.length} protocol entries
               </p>
-              <p className="text-sm text-[var(--accent)] mt-2">> Ask me anything about your data...</p>
+              <p className="text-sm text-[var(--accent)] mt-2">&gt; Ask me anything about your data...</p>
             </div>
           </div>
         ) : (
