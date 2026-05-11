@@ -1,15 +1,17 @@
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import ForceGraph2D from 'react-force-graph-2d'
-import { useWikiStore, useNotesStore, useJournalStore } from '../store'
+import { useWikiStore, useNotesStore, useJournalStore, useSettingsStore } from '../store'
 import Button from '../components/ui/Button'
 import Input from '../components/ui/Input'
 import { format, formatDistanceToNow } from 'date-fns'
 import { 
   ChevronRight, ChevronDown, Plus, FileText, Folder, 
-  FolderOpen, Search, Network, List, Edit3, Trash2 
+  FolderOpen, Search, Network, List, Edit3, Trash2, 
+  Brain, Loader2, Link2, Sparkles
 } from 'lucide-react'
 import { formatDate, slugify } from '../lib/utils'
+import { analyzeWikiContent, findBacklinks } from '../lib/aiService'
 
 interface TreeNode {
   id: string
@@ -44,11 +46,15 @@ function buildTree(pages: { id?: number; title: string; slug: string }[]): TreeN
 function WikiPageEditor({ 
   page, 
   onSave, 
-  onDelete 
+  onDelete,
+  onAnalyze,
+  analyzing 
 }: { 
   page: { id?: number; title: string; content: string; tags?: string[] }
   onSave: (content: string) => void
   onDelete?: () => void
+  onAnalyze?: () => void
+  analyzing?: boolean
 }) {
   const [content, setContent] = useState(page.content || '')
 
@@ -69,6 +75,16 @@ function WikiPageEditor({
           className="text-xl font-semibold bg-transparent border-none outline-none text-[var(--text-primary)]"
         />
         <div className="flex gap-2">
+          {onAnalyze && (
+            <Button size="sm" variant="secondary" onClick={onAnalyze} disabled={analyzing}>
+              {analyzing ? (
+                <Loader2 className="w-4 h-4 animate-spin" />
+              ) : (
+                <Brain className="w-4 h-4" />
+              )}
+              <Sparkles className="w-3 h-3 ml-1" />
+            </Button>
+          )}
           <Button size="sm" onClick={handleSave}>Save</Button>
           {onDelete && (
             <Button size="sm" variant="danger" onClick={onDelete}>
@@ -97,7 +113,6 @@ function GraphView({ onNodeClick }: { onNodeClick: (type: string, id: string) =>
   const nodes = useMemo(() => {
     const nodeList: { id: string; name: string; type: string; val: number }[] = []
 
-    // Wiki pages = Violet (#7c3aed)
     wikiPages.forEach(page => {
       nodeList.push({
         id: `wiki-${page.slug}`,
@@ -107,7 +122,6 @@ function GraphView({ onNodeClick }: { onNodeClick: (type: string, id: string) =>
       })
     })
 
-    // Journal entries = Blue (#3b82f6)
     journalEntries.forEach(entry => {
       nodeList.push({
         id: `journal-${entry.date}`,
@@ -117,7 +131,6 @@ function GraphView({ onNodeClick }: { onNodeClick: (type: string, id: string) =>
       })
     })
 
-    // Inbox items = Green (#22c55e)
     notes.filter(n => n.status === 'inbox').forEach(note => {
       nodeList.push({
         id: `inbox-${note.id}`,
@@ -133,7 +146,6 @@ function GraphView({ onNodeClick }: { onNodeClick: (type: string, id: string) =>
   const links = useMemo(() => {
     const linkList: { source: string; target: string }[] = []
 
-    // Wiki to Wiki links (via related field)
     wikiPages.forEach(page => {
       if (page.related) {
         page.related.forEach(slug => {
@@ -145,7 +157,6 @@ function GraphView({ onNodeClick }: { onNodeClick: (type: string, id: string) =>
       }
     })
 
-    // Inbox to Wiki links (via wikiLinks or relatedWikiSlug)
     notes.filter(n => n.status === 'inbox').forEach(note => {
       if (note.wikiLinks) {
         note.wikiLinks.forEach(slug => {
@@ -212,12 +223,20 @@ export default function Wiki() {
   const navigate = useNavigate()
   const { slug } = useParams()
   const { items, fetchAll, create, update, delete: deletePage, getBySlug } = useWikiStore()
+  const { apiKey } = useSettingsStore()
   const [view, setView] = useState<'list' | 'graph'>('list')
   const [search, setSearch] = useState('')
   const [expandedFolders, setExpandedFolders] = useState<Set<string>>(new Set())
   const [newPageTitle, setNewPageTitle] = useState('')
   const [showNewPage, setShowNewPage] = useState(false)
-  const [currentPage, setCurrentPage] = useState<{ id?: number; title: string; content: string; tags?: string[] } | null>(null)
+  const [currentPage, setCurrentPage] = useState<{ id?: number; title: string; content: string; tags?: string[]; related?: string[] } | null>(null)
+  
+  const [analyzing, setAnalyzing] = useState(false)
+  const [relatedNotes, setRelatedNotes] = useState<{ title: string; slug: string }[]>([])
+  const [backlinks, setBacklinks] = useState<{ title: string; slug: string }[]>([])
+  const [aiSummary, setAiSummary] = useState('')
+  const [showExtractModal, setShowExtractModal] = useState(false)
+  const [extractSuggestion, setExtractSuggestion] = useState<{ title: string; content: string } | null>(null)
 
   useEffect(() => {
     fetchAll()
@@ -234,6 +253,13 @@ export default function Wiki() {
       setCurrentPage(items[0])
     }
   }, [slug, items])
+
+  useEffect(() => {
+    if (currentPage?.title && items.length > 0) {
+      findBacklinks(currentPage.title, currentPage.slug || slugify(currentPage.title), items)
+        .then(setBacklinks)
+    }
+  }, [currentPage?.title, items])
 
   const filteredPages = items.filter(p => 
     p.title.toLowerCase().includes(search.toLowerCase())
@@ -265,10 +291,58 @@ export default function Wiki() {
     }
   }
 
+  const handleAnalyze = async () => {
+    if (!currentPage || !apiKey) return
+    
+    setAnalyzing(true)
+    try {
+      const result = await analyzeWikiContent(
+        currentPage.content,
+        currentPage.title,
+        items
+      )
+      
+      if (result.suggestedLinks?.length > 0) {
+        const linked = result.suggestedLinks
+          .map(title => items.find(p => p.title === title))
+          .filter(Boolean) as { title: string; slug: string }[]
+        setRelatedNotes(linked)
+      }
+      
+      if (result.summary) {
+        setAiSummary(result.summary)
+      }
+      
+      if (result.extractedSections?.length > 0) {
+        setExtractSuggestion(result.extractedSections[0])
+        setShowExtractModal(true)
+      }
+    } catch (error) {
+      console.error('Analysis error:', error)
+    } finally {
+      setAnalyzing(false)
+    }
+  }
+
+  const handleExtractSection = async () => {
+    if (!extractSuggestion) return
+    
+    const now = new Date()
+    const content = WIKI_TEMPLATE
+      .replace('{{title}}', extractSuggestion.title)
+      .replace('{{title}}', extractSuggestion.title)
+      .replace('{{date}}', format(now, 'yyyy-MM-dd'))
+      + `\n\n${extractSuggestion.content}`
+
+    await create(extractSuggestion.title, content)
+    setShowExtractModal(false)
+    setExtractSuggestion(null)
+  }
+
   const handleNodeClick = useCallback((type: string, id: string) => {
     if (type === 'wiki') {
-      const slug = id.replace('wiki-', '')
-      navigate(`/wiki/${slug}`)
+      const pageSlug = id.replace('wiki-', '')
+      navigate(`/wiki/${pageSlug}`)
     } else if (type === 'journal') {
       const date = id.replace('journal-', '')
       navigate(`/journal`)
@@ -286,6 +360,9 @@ export default function Wiki() {
         <div className="p-3 border-b border-[var(--border)]">
           <div className="flex items-center gap-2 mb-2">
             <h2 className="text-sm font-semibold text-[var(--text-primary)]">Explorer</h2>
+            {apiKey && (
+              <Brain className={`w-4 h-4 text-[var(--accent)] ${analyzing ? 'animate-pulse' : ''}`} />
+            )}
           </div>
           <div className="relative">
             <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-4 h-4 text-[var(--text-tertiary)]" />
@@ -376,11 +453,67 @@ export default function Wiki() {
             <GraphView onNodeClick={handleNodeClick} />
           </div>
         ) : currentPage ? (
-          <WikiPageEditor
-            page={currentPage}
-            onSave={handleSavePage}
-            onDelete={handleDeletePage}
-          />
+          <div className="flex-1 flex flex-col">
+            <WikiPageEditor
+              page={currentPage}
+              onSave={handleSavePage}
+              onDelete={handleDeletePage}
+              onAnalyze={apiKey ? handleAnalyze : undefined}
+              analyzing={analyzing}
+            />
+            
+            {/* AI Summary */}
+            {aiSummary && (
+              <div className="px-4 py-2 border-t border-[var(--border)] bg-[var(--bg-surface)]">
+                <div className="flex items-center gap-2 text-xs text-[var(--text-secondary)]">
+                  <Brain className="w-3 h-3 text-[var(--accent)]" />
+                  <span>{aiSummary}</span>
+                </div>
+              </div>
+            )}
+
+            {/* Related Notes */}
+            {relatedNotes.length > 0 && (
+              <div className="px-4 py-2 border-t border-[var(--border)] bg-[var(--bg-surface)]">
+                <div className="text-xs font-medium text-[var(--text-tertiary)] mb-1 flex items-center gap-1">
+                  <Sparkles className="w-3 h-3" />
+                  Related Notes
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  {relatedNotes.map(note => (
+                    <button
+                      key={note.slug}
+                      onClick={() => navigate(`/wiki/${note.slug}`)}
+                      className="px-2 py-1 text-xs bg-[var(--accent-soft)] text-[var(--accent)] rounded hover:bg-[var(--accent)] hover:text-white transition-colors"
+                    >
+                      {note.title}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Backlinks Footer */}
+            {backlinks.length > 0 && (
+              <div className="px-4 py-2 border-t border-[var(--border)] bg-[var(--bg-elevated)]">
+                <div className="text-xs font-medium text-[var(--text-tertiary)] mb-1 flex items-center gap-1">
+                  <Link2 className="w-3 h-3" />
+                  Linked Mentions ({backlinks.length})
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  {backlinks.map(link => (
+                    <button
+                      key={link.slug}
+                      onClick={() => navigate(`/wiki/${link.slug}`)}
+                      className="px-2 py-1 text-xs bg-[var(--bg-surface)] text-[var(--text-secondary)] border border-[var(--border)] rounded hover:border-[var(--accent)] transition-colors"
+                    >
+                      {link.title}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
         ) : (
           <div className="flex-1 flex items-center justify-center">
             <div className="text-center">
@@ -397,6 +530,29 @@ export default function Wiki() {
           </div>
         )}
       </div>
+
+      {/* Extract Section Modal */}
+      {showExtractModal && extractSuggestion && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-[var(--bg-surface)] border border-[var(--border)] rounded-lg w-[500px] p-4">
+            <h3 className="font-semibold mb-2 flex items-center gap-2">
+              <Sparkles className="w-4 h-4 text-[var(--accent)]" />
+              Extract as Sub-page?
+            </h3>
+            <p className="text-sm text-[var(--text-secondary)] mb-3">
+              The AI identified this section that could be its own page:
+            </p>
+            <div className="p-3 bg-[var(--bg-elevated)] rounded mb-3">
+              <p className="text-sm font-medium text-[var(--accent)] mb-1">{extractSuggestion.title}</p>
+              <p className="text-xs text-[var(--text-secondary)] line-clamp-3">{extractSuggestion.content}</p>
+            </div>
+            <div className="flex gap-2">
+              <Button onClick={handleExtractSection}>Extract</Button>
+              <Button variant="secondary" onClick={() => setShowExtractModal(false)}>Skip</Button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
