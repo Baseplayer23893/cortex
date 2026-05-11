@@ -2,10 +2,9 @@ import { useState, useEffect } from 'react'
 import { useTasksStore } from '../store'
 import Button from '../components/ui/Button'
 import Input from '../components/ui/Input'
-import { format } from 'date-fns'
-import { Plus, Check, Circle, Calendar, Tag, Trash2, ChevronDown, ChevronRight } from 'lucide-react'
+import { formatDate, getTodayDateString } from '../lib/utils'
+import { Plus, Check, Circle, Trash2, ChevronDown, ChevronRight, Tag as TagIcon } from 'lucide-react'
 import type { Task } from '../types'
-import { formatDate } from '../lib/utils'
 
 type FilterType = 'all' | 'today' | 'week' | 'tag'
 
@@ -65,7 +64,7 @@ function TaskItem({ task, onToggle, onUpdate, onDelete }: TaskItemProps) {
           </span>
           {task.dueDate && (
             <span className={`text-xs px-2 py-0.5 rounded ${
-              task.dueDate < new Date().toISOString().split('T')[0] && !isDone 
+              task.dueDate < getTodayDateString() && !isDone 
                 ? 'bg-[var(--red)]/20 text-[var(--red)]' 
                 : 'bg-[var(--bg-elevated)] text-[var(--text-secondary)]'
             }`}>
@@ -74,6 +73,12 @@ function TaskItem({ task, onToggle, onUpdate, onDelete }: TaskItemProps) {
           )}
           {task.priority !== 'low' && (
             <span className={`w-2 h-2 rounded-full ${priorityColors[task.priority]}`} />
+          )}
+          {task.tags && task.tags.length > 0 && (
+            <span className="flex items-center gap-0.5 text-xs text-[var(--text-tertiary)]">
+              <TagIcon className="w-3 h-3" />
+              {task.tags.length}
+            </span>
           )}
           {expanded ? (
             <ChevronDown className="w-4 h-4 text-[var(--text-tertiary)]" />
@@ -206,9 +211,10 @@ interface TaskGroupProps {
   onDelete: (id: number) => void
   onAddClick: () => void
   showAddButton?: boolean
+  emptyMessage?: string
 }
 
-function TaskGroup({ title, tasks, onToggle, onUpdate, onDelete, onAddClick, showAddButton = true }: TaskGroupProps) {
+function TaskGroup({ title, tasks, onToggle, onUpdate, onDelete, onAddClick, showAddButton = true, emptyMessage }: TaskGroupProps) {
   return (
     <div className="space-y-3">
       <div className="flex items-center justify-between">
@@ -223,7 +229,7 @@ function TaskGroup({ title, tasks, onToggle, onUpdate, onDelete, onAddClick, sho
         )}
       </div>
       {tasks.length === 0 ? (
-        <p className="text-sm text-[var(--text-tertiary)] py-4 text-center">No tasks</p>
+        <p className="text-sm text-[var(--text-tertiary)] py-4 text-center">{emptyMessage || 'No tasks'}</p>
       ) : (
         <div className="space-y-2">
           {tasks.map(task => (
@@ -245,24 +251,35 @@ export default function Tasks() {
   const { items, loading, fetchAll, add, update, delete: deleteTask, toggleComplete } = useTasksStore()
   const [filter, setFilter] = useState<FilterType>('all')
   const [addingGroup, setAddingGroup] = useState<string | null>(null)
-  const [newTaskGroup, setNewTaskGroup] = useState('')
+  const [selectedTag, setSelectedTag] = useState<string | null>(null)
 
   useEffect(() => {
     fetchAll()
   }, [])
 
-  const today = new Date().toISOString().split('T')[0]
-  const nextWeek = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
+  const today = getTodayDateString()
+  const nextWeekDate = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000)
+  const nextWeek = nextWeekDate.toISOString().split('T')[0]
 
+  // Get unique tags from all tasks
+  const allTags = Array.from(
+    new Set(items.flatMap(t => t.tags || []))
+  ).sort()
+
+  // Filter tasks by date
   const todayTasks = items.filter(t => t.dueDate === today && t.status !== 'done')
   const upcomingTasks = items.filter(t => t.dueDate && t.dueDate > today && t.dueDate <= nextWeek && t.status !== 'done')
   const somedayTasks = items.filter(t => !t.dueDate && t.status !== 'done')
   const doneTasks = items.filter(t => t.status === 'done')
 
+  // Filter by selected tag
+  const taggedTasks = selectedTag 
+    ? items.filter(t => t.tags && t.tags.includes(selectedTag) && t.status !== 'done')
+    : items.filter(t => t.tags && t.tags.length > 0 && t.status !== 'done')
+
   const handleAddTask = async (task: Omit<Task, 'id'>) => {
     await add(task)
     setAddingGroup(null)
-    setNewTaskGroup('')
   }
 
   const handleToggle = async (id: number) => {
@@ -284,6 +301,15 @@ export default function Tasks() {
     { label: 'By Tag', value: 'tag' },
   ]
 
+  const getFilterTitle = () => {
+    switch (filter) {
+      case 'today': return 'Today'
+      case 'week': return 'This Week'
+      case 'tag': return selectedTag ? `Tag: ${selectedTag}` : 'All Tags'
+      default: return 'All Tasks'
+    }
+  }
+
   return (
     <div className="flex flex-col h-full">
       <div className="p-6 border-b border-[var(--border)]">
@@ -298,10 +324,13 @@ export default function Tasks() {
           {filterButtons.map(btn => (
             <button
               key={btn.value}
-              onClick={() => setFilter(btn.value)}
+              onClick={() => {
+                setFilter(btn.value)
+                if (btn.value !== 'tag') setSelectedTag(null)
+              }}
               className={`px-3 py-1.5 text-sm rounded-md transition-colors ${
                 filter === btn.value
-                  ? 'bg-[var(--accent-soft)] text-[var(--accent)]'
+                  ? 'bg-[var(--accent)] text-white'
                   : 'text-[var(--text-secondary)] hover:bg-[var(--bg-elevated)]'
               }`}
             >
@@ -311,68 +340,86 @@ export default function Tasks() {
         </div>
       </div>
 
-      <div className="flex-1 overflow-y-auto p-6 space-y-6">
+      <div className="flex-1 overflow-y-auto p-6">
         {loading ? (
           <div className="text-center text-[var(--text-secondary)] py-8">Loading...</div>
-        ) : (
-          <>
-            {addingGroup === 'today' ? (
-              <AddTaskForm onAdd={handleAddTask} onCancel={() => setAddingGroup(null)} />
-            ) : (
-              <TaskGroup
-                title="Today"
-                tasks={filter === 'today' ? todayTasks : filter === 'all' ? todayTasks : []}
-                onToggle={handleToggle}
-                onUpdate={handleUpdate}
-                onDelete={handleDelete}
-                onAddClick={() => setAddingGroup('today')}
-              />
-            )}
-
-            {filter === 'all' && (
+        ) : filter === 'tag' ? (
+          // By Tag View
+          <div className="space-y-4">
+            {selectedTag ? (
               <>
-                {addingGroup === 'upcoming' ? (
-                  <AddTaskForm onAdd={handleAddTask} onCancel={() => setAddingGroup(null)} />
+                <div className="flex items-center gap-2 mb-4">
+                  <button
+                    onClick={() => setSelectedTag(null)}
+                    className="text-sm text-[var(--accent)] hover:underline"
+                  >
+                    ← Back to tags
+                  </button>
+                </div>
+                {taggedTasks.length === 0 ? (
+                  <div className="text-center py-8">
+                    <p className="text-[var(--text-secondary)]">No tasks with this tag</p>
+                  </div>
                 ) : (
-                  <TaskGroup
-                    title="Upcoming"
-                    tasks={upcomingTasks}
-                    onToggle={handleToggle}
-                    onUpdate={handleUpdate}
-                    onDelete={handleDelete}
-                    onAddClick={() => setAddingGroup('upcoming')}
-                  />
+                  <div className="space-y-2">
+                    {taggedTasks.map(task => (
+                      <TaskItem
+                        key={task.id}
+                        task={task}
+                        onToggle={handleToggle}
+                        onUpdate={handleUpdate}
+                        onDelete={handleDelete}
+                      />
+                    ))}
+                  </div>
                 )}
-
-                {addingGroup === 'someday' ? (
-                  <AddTaskForm onAdd={handleAddTask} onCancel={() => setAddingGroup(null)} />
+              </>
+            ) : (
+              <>
+                <h3 className="text-sm font-medium text-[var(--text-secondary)] mb-3">Select a tag</h3>
+                {allTags.length === 0 ? (
+                  <div className="text-center py-8">
+                    <TagIcon className="w-8 h-8 text-[var(--text-tertiary)] mx-auto mb-2" />
+                    <p className="text-[var(--text-secondary)]">No tags yet</p>
+                    <p className="text-sm text-[var(--text-tertiary)]">Add tags to your tasks to organize them</p>
+                  </div>
                 ) : (
-                  <TaskGroup
-                    title="Someday"
-                    tasks={somedayTasks}
-                    onToggle={handleToggle}
-                    onUpdate={handleUpdate}
-                    onDelete={handleDelete}
-                    onAddClick={() => setAddingGroup('someday')}
-                  />
-                )}
-
-                {addingGroup === 'done' ? (
-                  <AddTaskForm onAdd={handleAddTask} onCancel={() => setAddingGroup(null)} />
-                ) : (
-                  <TaskGroup
-                    title="Done"
-                    tasks={doneTasks}
-                    onToggle={handleToggle}
-                    onUpdate={handleUpdate}
-                    onDelete={handleDelete}
-                    showAddButton={false}
-                  />
+                  <div className="flex flex-wrap gap-2">
+                    {allTags.map(tag => (
+                      <button
+                        key={tag}
+                        onClick={() => setSelectedTag(tag)}
+                        className="px-3 py-1.5 bg-[var(--bg-surface)] border border-[var(--border)] rounded-full text-sm text-[var(--text-primary)] hover:border-[var(--accent)] transition-colors"
+                      >
+                        {tag}
+                        <span className="ml-1.5 text-xs text-[var(--text-tertiary)]">
+                          ({items.filter(t => t.tags?.includes(tag)).length})
+                        </span>
+                      </button>
+                    ))}
+                  </div>
                 )}
               </>
             )}
-
-            {filter === 'today' && todayTasks.length === 0 && !addingGroup && (
+          </div>
+        ) : filter === 'today' ? (
+          // Today Filter View
+          <div className="space-y-4">
+            {addingGroup ? (
+              <AddTaskForm onAdd={handleAddTask} onCancel={() => setAddingGroup(null)} />
+            ) : todayTasks.length > 0 ? (
+              <div className="space-y-2">
+                {todayTasks.map(task => (
+                  <TaskItem
+                    key={task.id}
+                    task={task}
+                    onToggle={handleToggle}
+                    onUpdate={handleUpdate}
+                    onDelete={handleDelete}
+                  />
+                ))}
+              </div>
+            ) : (
               <div className="text-center py-8">
                 <p className="text-[var(--text-secondary)]">No tasks due today</p>
                 <Button 
@@ -385,13 +432,95 @@ export default function Tasks() {
                 </Button>
               </div>
             )}
-
-            {filter === 'week' && upcomingTasks.length === 0 && (
+          </div>
+        ) : filter === 'week' ? (
+          // This Week Filter View
+          <div className="space-y-4">
+            {upcomingTasks.length > 0 ? (
+              <div className="space-y-2">
+                {upcomingTasks.map(task => (
+                  <TaskItem
+                    key={task.id}
+                    task={task}
+                    onToggle={handleToggle}
+                    onUpdate={handleUpdate}
+                    onDelete={handleDelete}
+                  />
+                ))}
+              </div>
+            ) : (
               <div className="text-center py-8">
                 <p className="text-[var(--text-secondary)]">No tasks due this week</p>
+                <Button 
+                  variant="secondary" 
+                  size="sm" 
+                  className="mt-2"
+                  onClick={() => setAddingGroup('upcoming')}
+                >
+                  <Plus className="w-4 h-4 mr-1" /> Add a task
+                </Button>
               </div>
             )}
-          </>
+          </div>
+        ) : (
+          // All Tasks View (default)
+          <div className="space-y-6">
+            {addingGroup === 'today' ? (
+              <AddTaskForm onAdd={handleAddTask} onCancel={() => setAddingGroup(null)} />
+            ) : (
+              <TaskGroup
+                title="Today"
+                tasks={todayTasks}
+                onToggle={handleToggle}
+                onUpdate={handleUpdate}
+                onDelete={handleDelete}
+                onAddClick={() => setAddingGroup('today')}
+                emptyMessage="No tasks due today"
+              />
+            )}
+
+            {addingGroup === 'upcoming' ? (
+              <AddTaskForm onAdd={handleAddTask} onCancel={() => setAddingGroup(null)} />
+            ) : (
+              <TaskGroup
+                title="Upcoming"
+                tasks={upcomingTasks}
+                onToggle={handleToggle}
+                onUpdate={handleUpdate}
+                onDelete={handleDelete}
+                onAddClick={() => setAddingGroup('upcoming')}
+                emptyMessage="No upcoming tasks"
+              />
+            )}
+
+            {addingGroup === 'someday' ? (
+              <AddTaskForm onAdd={handleAddTask} onCancel={() => setAddingGroup(null)} />
+            ) : (
+              <TaskGroup
+                title="Someday"
+                tasks={somedayTasks}
+                onToggle={handleToggle}
+                onUpdate={handleUpdate}
+                onDelete={handleDelete}
+                onAddClick={() => setAddingGroup('someday')}
+                emptyMessage="No tasks without a due date"
+              />
+            )}
+
+            {addingGroup === 'done' ? (
+              <AddTaskForm onAdd={handleAddTask} onCancel={() => setAddingGroup(null)} />
+            ) : (
+              <TaskGroup
+                title="Done"
+                tasks={doneTasks}
+                onToggle={handleToggle}
+                onUpdate={handleUpdate}
+                onDelete={handleDelete}
+                showAddButton={false}
+                emptyMessage="No completed tasks"
+              />
+            )}
+          </div>
         )}
       </div>
     </div>
