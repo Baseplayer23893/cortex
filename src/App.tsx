@@ -59,7 +59,8 @@ function AppContent() {
           <Route path="tasks" element={<Tasks />} />
           <Route path="timetable" element={<Timetable />} />
           <Route path="daily" element={<DailyNote />} />
-          <Route path="ai" element={<AIBrain />} />
+<Route path="ai" element={<AIBrain />} />
+          <Route path="brain" element={<AIBrain />} />
           <Route path="settings" element={<Settings />} />
         </Route>
       </Routes>
