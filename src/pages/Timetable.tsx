@@ -1,10 +1,11 @@
 import React, { useState, useEffect, useRef } from 'react'
-import { useTimetableStore, useSettingsStore } from '../store'
+import { useNavigate } from 'react-router-dom'
+import { useTimetableStore, useSettingsStore, useTasksStore } from '../store'
 import Button from '../components/ui/Button'
 import Input from '../components/ui/Input'
 import { format, isSameDay } from 'date-fns'
-import { Plus, Trash2, Clock, MapPin, Repeat, X, RefreshCw } from 'lucide-react'
-import type { TimetableBlock } from '../types'
+import { Plus, Trash2, Clock, MapPin, Repeat, X, RefreshCw, CheckCircle } from 'lucide-react'
+import type { TimetableBlock, Task } from '../types'
 
 const HOURS = Array.from({ length: 15 }, (_, i) => i + 7) // 7am to 9pm
 const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
@@ -145,8 +146,10 @@ function BlockForm({ block, onSave, onDelete, onClose }: BlockFormProps) {
 }
 
 export default function Timetable() {
+  const navigate = useNavigate()
   const { items, loading, fetchAll, add, update, delete: deleteBlock, googleEvents, fetchGoogleEvents } = useTimetableStore()
   const { isLoggedIn } = useSettingsStore()
+  const { items: tasks, fetchAll: fetchTasks } = useTasksStore()
   const [viewMode, setViewMode] = useState<ViewMode>('weekdays')
   const [showForm, setShowForm] = useState(false)
   const [editingBlock, setEditingBlock] = useState<TimetableBlock | null>(null)
@@ -155,6 +158,10 @@ export default function Timetable() {
 
   useEffect(() => {
     fetchAll()
+    fetchTasks()
+    if (isLoggedIn) {
+      fetchGoogleEvents()
+    }
   }, [])
 
   const today = new Date().getDay()
@@ -218,6 +225,28 @@ export default function Timetable() {
       console.log(result.message)
     } else {
       console.error(result.message)
+    }
+  }
+
+  const handleTaskClick = (task: Task) => {
+    navigate('/tasks')
+  }
+
+  const getTasksForDay = (day: number): Task[] => {
+    const dayNames = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday']
+    return tasks.filter(t => {
+      if (!t.dueDate || t.status === 'done') return false
+      const taskDate = new Date(t.dueDate)
+      return taskDate.getDay() === day
+    })
+  }
+
+  const getPriorityColor = (priority: Task['priority']) => {
+    switch (priority) {
+      case 'high': return '#ef4444'
+      case 'medium': return '#f59e0b'
+      case 'low': return '#3b82f6'
+      default: return '#7c3aed'
     }
   }
 
@@ -364,6 +393,42 @@ export default function Timetable() {
                               </div>
                             )
                           })}
+
+                        {/* Tasks - appear at 08:00 slot */}
+                        {hour === 8 && (() => {
+                          const dayTasks = getTasksForDay(day)
+                          return dayTasks.map((task, idx) => (
+                            <div
+                              key={`task-${task.id}`}
+                              className="absolute left-1 right-1 rounded-md px-2 py-1 text-xs cursor-pointer hover:opacity-90 transition-opacity overflow-hidden border-2 border-dashed"
+                              style={{ 
+                                backgroundColor: 'rgba(255,255,255,0.1)',
+                                borderColor: getPriorityColor(task.priority),
+                                top: `${idx * 36}px`,
+                                height: '32px',
+                                zIndex: 10,
+                              }}
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                handleTaskClick(task)
+                              }}
+                            >
+                              <div className="flex items-center gap-1">
+                                {task.status === 'done' ? (
+                                  <CheckCircle className="w-3 h-3 text-[var(--green)] flex-shrink-0" />
+                                ) : (
+                                  <div 
+                                    className="w-2 h-2 rounded-full flex-shrink-0" 
+                                    style={{ backgroundColor: getPriorityColor(task.priority) }}
+                                  />
+                                )}
+                                <span className={`truncate ${task.status === 'done' ? 'line-through text-[var(--text-tertiary)]' : 'text-white'}`}>
+                                  {task.title}
+                                </span>
+                              </div>
+                            </div>
+                          ))
+                        })()}
                       </div>
                     )
                   })}
