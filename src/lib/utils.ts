@@ -11,7 +11,7 @@ export function slugify(text: string): string {
 
 export function formatDate(date: Date | string): string {
   const d = typeof date === 'string' ? parseISO(date) : date
-  return format(d, 'MMM d, yyyy')
+  return format(d, 'dd/MM/yyyy')
 }
 
 export function formatTime(date: Date | string): string {

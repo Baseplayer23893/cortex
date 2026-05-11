@@ -5,6 +5,7 @@ import Input from '../components/ui/Input'
 import { format } from 'date-fns'
 import { Plus, Check, Circle, Calendar, Tag, Trash2, ChevronDown, ChevronRight } from 'lucide-react'
 import type { Task } from '../types'
+import { formatDate } from '../lib/utils'
 
 type FilterType = 'all' | 'today' | 'week' | 'tag'
 
@@ -64,11 +65,11 @@ function TaskItem({ task, onToggle, onUpdate, onDelete }: TaskItemProps) {
           </span>
           {task.dueDate && (
             <span className={`text-xs px-2 py-0.5 rounded ${
-              new Date(task.dueDate) < new Date() && !isDone 
+              task.dueDate < new Date().toISOString().split('T')[0] && !isDone 
                 ? 'bg-[var(--red)]/20 text-[var(--red)]' 
                 : 'bg-[var(--bg-elevated)] text-[var(--text-secondary)]'
             }`}>
-              {format(new Date(task.dueDate), 'MMM d')}
+              {formatDate(task.dueDate)}
             </span>
           )}
           {task.priority !== 'low' && (
