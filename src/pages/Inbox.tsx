@@ -1,14 +1,17 @@
 import { useState, useEffect } from 'react'
-import { useNotesStore } from '../store'
+import { useNotesStore, useSettingsStore } from '../store'
 import Button from '../components/ui/Button'
 import Input from '../components/ui/Input'
 import { formatRelativeDate, truncate } from '../lib/utils'
-import { Archive, Trash2, Plus, Lightbulb } from 'lucide-react'
+import { processInboxItem } from '../lib/protocolAgent'
+import { Archive, Trash2, Plus, Lightbulb, Wand2, Loader2 } from 'lucide-react'
 
 export default function Inbox() {
   const { items, loading, fetchAll, add, update, delete: deleteNote, getInboxCount } = useNotesStore()
+  const { apiKey } = useSettingsStore()
   const [newNote, setNewNote] = useState('')
   const [submitting, setSubmitting] = useState(false)
+  const [processingId, setProcessingId] = useState<number | null>(null)
 
   useEffect(() => {
     fetchAll()
@@ -43,6 +46,17 @@ export default function Inbox() {
 
   const handleDelete = async (id: number) => {
     await deleteNote(id)
+  }
+
+  const handleRunProtocol = async (id: number) => {
+    if (!apiKey || processingId) return
+    setProcessingId(id)
+    try {
+      await processInboxItem(id)
+      await fetchAll()
+    } finally {
+      setProcessingId(null)
+    }
   }
 
   const inboxNotes = items.filter(n => n.status === 'inbox')
@@ -109,6 +123,20 @@ export default function Inbox() {
                   </div>
                   
                   <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                    {apiKey && (
+                      <button
+                        onClick={() => note.id && handleRunProtocol(note.id)}
+                        disabled={processingId === note.id}
+                        className="p-2 text-[var(--accent)] hover:bg-[var(--accent-soft)] rounded-md transition-colors disabled:opacity-50"
+                        title="Run Protocol"
+                      >
+                        {processingId === note.id ? (
+                          <Loader2 className="w-4 h-4 animate-spin" />
+                        ) : (
+                          <Wand2 className="w-4 h-4" />
+                        )}
+                      </button>
+                    )}
                     <button
                       onClick={() => note.id && handleArchive(note.id)}
                       className="p-2 text-[var(--text-tertiary)] hover:text-[var(--accent)] hover:bg-[var(--bg-elevated)] rounded-md transition-colors"
