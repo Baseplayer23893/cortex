@@ -1,9 +1,9 @@
 import React, { useState, useEffect, useRef } from 'react'
-import { useTimetableStore } from '../store'
+import { useTimetableStore, useSettingsStore } from '../store'
 import Button from '../components/ui/Button'
 import Input from '../components/ui/Input'
 import { format, isSameDay } from 'date-fns'
-import { Plus, Trash2, Clock, MapPin, Repeat, X } from 'lucide-react'
+import { Plus, Trash2, Clock, MapPin, Repeat, X, RefreshCw } from 'lucide-react'
 import type { TimetableBlock } from '../types'
 
 const HOURS = Array.from({ length: 15 }, (_, i) => i + 7) // 7am to 9pm
@@ -145,11 +145,13 @@ function BlockForm({ block, onSave, onDelete, onClose }: BlockFormProps) {
 }
 
 export default function Timetable() {
-  const { items, loading, fetchAll, add, update, delete: deleteBlock } = useTimetableStore()
+  const { items, loading, fetchAll, add, update, delete: deleteBlock, googleEvents, fetchGoogleEvents } = useTimetableStore()
+  const { isLoggedIn } = useSettingsStore()
   const [viewMode, setViewMode] = useState<ViewMode>('weekdays')
   const [showForm, setShowForm] = useState(false)
   const [editingBlock, setEditingBlock] = useState<TimetableBlock | null>(null)
   const [selectedSlot, setSelectedSlot] = useState<{ day: number; time: string } | null>(null)
+  const [syncing, setSyncing] = useState(false)
 
   useEffect(() => {
     fetchAll()
@@ -208,19 +210,38 @@ export default function Timetable() {
     }
   }
 
+  const handleSyncGoogle = async () => {
+    setSyncing(true)
+    const result = await fetchGoogleEvents()
+    setSyncing(false)
+    if (result.success) {
+      console.log(result.message)
+    } else {
+      console.error(result.message)
+    }
+  }
+
   return (
     <div className="flex flex-col h-full">
       <div className="p-6 border-b border-[var(--border)]">
         <div className="flex items-center justify-between mb-4">
           <h1 className="text-2xl font-semibold">Timetable</h1>
-          <Button onClick={() => {
-            setEditingBlock(null)
-            setSelectedSlot(null)
-            setShowForm(true)
-          }}>
-            <Plus className="w-4 h-4 mr-2" />
-            Add Block
-          </Button>
+          <div className="flex gap-2">
+            {isLoggedIn && (
+              <Button variant="secondary" onClick={handleSyncGoogle} disabled={syncing}>
+                <RefreshCw className={`w-4 h-4 mr-2 ${syncing ? 'animate-spin' : ''}`} />
+                {syncing ? 'Syncing...' : 'Sync Google'}
+              </Button>
+            )}
+            <Button onClick={() => {
+              setEditingBlock(null)
+              setSelectedSlot(null)
+              setShowForm(true)
+            }}>
+              <Plus className="w-4 h-4 mr-2" />
+              Add Block
+            </Button>
+          </div>
         </div>
 
         <div className="flex gap-2">
@@ -253,7 +274,7 @@ export default function Timetable() {
         ) : (
           <div className="min-w-[800px]">
             {/* Header */}
-            <div className="grid gap-px bg-[var(--border)] mb-px" style={{ gridTemplateColumns: `60px repeat(${visibleDays.length}, 1fr)` }}>
+<div className="grid gap-px bg-[var(--border)] mb-px" style={{ gridTemplateColumns: `60px repeat(${visibleDays.length}, 1fr)` }}>
               <div className="bg-[var(--bg-surface)] p-2"></div>
               {visibleDays.map(day => (
                 <div 
@@ -263,9 +284,7 @@ export default function Timetable() {
                   }`}
                 >
                   {DAYS[day]}
-                  {day === today && (
-                    <span className="ml-1 text-xs opacity-75">(Today)</span>
-                  )}
+                  {day === today && <span className="ml-1 text-xs opacity-75">(Today)</span>}
                 </div>
               ))}
             </div>
@@ -282,6 +301,7 @@ export default function Timetable() {
                   {/* Day cells */}
                   {visibleDays.map(day => {
                     const dayBlocks = getBlocksForDay(day)
+                    const dayGoogleEvents = googleEvents.filter(e => e.dayOfWeek === day)
                     const isToday = day === today
                     
                     return (
@@ -292,6 +312,7 @@ export default function Timetable() {
                         }`}
                         onClick={() => handleSlotClick(day, `${hour.toString().padStart(2, '0')}:00`)}
                       >
+                        {/* User blocks */}
                         {dayBlocks
                           .filter(block => {
                             const [blockHour] = block.startTime.split(':').map(Number)
@@ -313,6 +334,32 @@ export default function Timetable() {
                                 <div className="font-medium truncate">{block.title}</div>
                                 {height > 30 && block.location && (
                                   <div className="opacity-75 truncate">{block.location}</div>
+                                )}
+                              </div>
+                            )
+                          })}
+                        
+                        {/* Google Calendar events */}
+                        {dayGoogleEvents
+                          .filter(event => {
+                            const [eventHour] = event.startTime.split(':').map(Number)
+                            return eventHour === hour
+                          })
+                          .map((event, idx) => {
+                            const { top, height } = getBlockPosition(event)
+                            return (
+                              <div
+                                key={`google-${idx}`}
+                                className="absolute left-1 right-1 rounded-md px-2 py-1 text-xs text-white cursor-not-allowed opacity-80 overflow-hidden border border-white/20"
+                                style={{ 
+                                  backgroundColor: event.color || '#4285F4',
+                                  top: `${top % 48}px`,
+                                  height: `${height}px`,
+                                }}
+                              >
+                                <div className="font-medium truncate">📅 {event.title}</div>
+                                {height > 30 && event.location && (
+                                  <div className="opacity-75 truncate">{event.location}</div>
                                 )}
                               </div>
                             )

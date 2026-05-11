@@ -89,19 +89,24 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
     const aiModel = localStorage.getItem('cortex:aiModel') || 'MiniMax-Text-01'
     const habitsStr = localStorage.getItem('cortex:habits')
     const habits: Habit[] = habitsStr ? JSON.parse(habitsStr) : []
-    const onboarded = localStorage.getItem('cortex:onboarded') === 'true'
+    let onboarded = localStorage.getItem('cortex:onboarded') === 'true'
 
     set({ userName, theme, apiKey, apiBaseUrl, aiModel, habits, onboarded })
     document.documentElement.setAttribute('data-theme', theme)
 
     const user = await getUser()
     if (user) {
+      // If user is logged in, they're onboarded regardless of localStorage flag
+      onboarded = true
       set({ 
         userId: user.id, 
         isLoggedIn: true, 
         syncEnabled: true,
+        onboarded: true,
         userName: user.user_metadata.full_name || userName,
       })
+      localStorage.setItem('cortex:onboarded', 'true')
+      
       const status = await checkSyncStatus()
       set({ syncStatus: status })
       
@@ -145,7 +150,10 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
           isLoggedIn: true, 
           syncEnabled: true,
           syncStatus: 'syncing',
+          onboarded: true,
         })
+        localStorage.setItem('cortex:onboarded', 'true')
+        
         const { error } = await pullFromSupabase()
         if (!error) {
           set({ syncStatus: 'synced' })
@@ -153,7 +161,8 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
           set({ syncStatus: 'local-only' })
         }
       } else if (event === 'SIGNED_OUT') {
-        set({ userId: null, isLoggedIn: false, syncEnabled: false, syncStatus: 'local-only' })
+        set({ userId: null, isLoggedIn: false, syncEnabled: false, syncStatus: 'local-only', onboarded: false })
+        localStorage.setItem('cortex:onboarded', 'false')
       }
     })
   },

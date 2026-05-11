@@ -6,6 +6,7 @@ export async function signInWithGoogle(): Promise<{ error: Error | null }> {
     provider: 'google',
     options: {
       redirectTo: window.location.origin,
+      scopes: 'https://www.googleapis.com/auth/calendar.readonly',
     },
   })
   return { error: error as Error | null }

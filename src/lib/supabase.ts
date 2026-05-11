@@ -27,4 +27,6 @@ export type Session = {
   expires_in: number
   expires_at: number
   user: User
+  provider_token?: string
+  provider_refresh_token?: string
 }
