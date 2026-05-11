@@ -92,6 +92,8 @@ export interface Settings {
   userName: string
   theme: 'dark' | 'light'
   apiKey: string
+  apiBaseUrl: string
+  aiModel: string
   habits: Habit[]
   onboarded: boolean
 }

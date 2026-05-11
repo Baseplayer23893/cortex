@@ -10,18 +10,19 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "react": "^18.3.1",
-    "react-dom": "^18.3.1",
-    "react-router-dom": "^6.22.0",
-    "zustand": "^4.5.0",
-    "dexie": "^3.2.4",
-    "lucide-react": "^0.344.0",
-    "date-fns": "^3.3.1",
-    "react-markdown": "^9.0.1",
-    "remark-gfm": "^4.0.0",
+    "@supabase/supabase-js": "^2.105.4",
+    "@tiptap/extension-placeholder": "^2.2.0",
     "@tiptap/react": "^2.2.0",
     "@tiptap/starter-kit": "^2.2.0",
-    "@tiptap/extension-placeholder": "^2.2.0"
+    "date-fns": "^3.3.1",
+    "dexie": "^3.2.4",
+    "lucide-react": "^0.344.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "react-markdown": "^9.0.1",
+    "react-router-dom": "^6.22.0",
+    "remark-gfm": "^4.0.0",
+    "zustand": "^4.5.0"
   },
   "devDependencies": {
     "@eslint/js": "^9.17.0",

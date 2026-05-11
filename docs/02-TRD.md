@@ -20,9 +20,13 @@
 
 ## Backend / Server
 
-**None.** This is a fully local, frontend-only app.
+**Supabase** — handles auth, cloud database, and real-time sync.
 
-All data lives in the browser via **IndexedDB** (through **Dexie.js**). No server needed. No backend. No deploy.
+| Layer | Choice |
+|---|---|
+| Backend | **Supabase** (Auth + PostgreSQL + Realtime) |
+| Local cache | **Dexie.js** (IndexedDB) — offline-first, instant UI |
+| Sync strategy | Local-first: write to Dexie → sync to Supabase in background |
 
 ---
 
@@ -30,20 +34,31 @@ All data lives in the browser via **IndexedDB** (through **Dexie.js**). No serve
 
 | Storage | Purpose |
 |---|---|
-| **Dexie.js (IndexedDB)** | All structured data — notes, tasks, journal entries, wiki pages, protocol, timetable |
-| **localStorage** | App settings (theme, API key, user name) |
+| **Dexie.js (IndexedDB)** | Local cache — all data lives here first, works fully offline |
+| **Supabase (PostgreSQL)** | Cloud sync — mirrors local data when online, enables cross-device |
+| **localStorage** | App settings (theme, API key, user name, sync preferences) |
 
-### Why IndexedDB over localStorage?
-- Can store thousands of notes without hitting limits
-- Supports querying, indexing, and relationships
-- Async — won't block the UI
+### Hybrid local-first strategy
+1. All writes go to Dexie first → UI updates instantly
+2. If user is logged in + online → write also syncs to Supabase in background
+3. On new device login → pull all data from Supabase into local Dexie
+4. Offline → works fully on Dexie alone, queues sync for when back online
 
 ---
 
 ## Authentication
-**None.** Single-user, local-only app. No login required.
 
-The user sets their name and API key in Settings on first launch. That's it.
+| | |
+|---|---|
+| Provider | **Supabase Auth** |
+| Methods | Google OAuth + Magic Link (email, no password) |
+| Session | JWT stored by Supabase client, auto-refreshed |
+| Optional | Auth is optional — app works locally without login. Login enables sync. |
+
+Flow:
+- First launch → onboarding → option to "Use locally" OR "Sign in to sync"
+- Signed in users get cross-device sync automatically
+- Signed out users get local-only mode (all features still work)
 
 ---
 
@@ -156,7 +171,8 @@ The MiniMax API key is **not** stored in `.env`. It's entered by the user in the
 
 - No backend server — everything runs in the browser
 - No external storage — no S3, no Supabase, no Firebase
-- Only external network call allowed: MiniMax API (when user triggers AI features)
-- Must work fully offline except for AI features
-- API key never logged, never sent anywhere except directly to `api.minimax.chat`
+- Must work fully offline (Dexie handles this)
+- Supabase sync runs in background — never blocks UI
+- MiniMax API key stored in localStorage only, sent only to `api.minimax.chat`
 - Use MiniMax free tier — keep prompts efficient, avoid unnecessary calls
+- Supabase free tier: 500MB DB, 50MB file storage, 50k MAU — more than enough

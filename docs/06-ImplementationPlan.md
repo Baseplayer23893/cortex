@@ -42,6 +42,30 @@ Each phase has a clear "done" criteria before moving on.
 
 ---
 
+## Phase 2.5 — Supabase Setup + Auth
+
+**Goal:** Auth working, Supabase connected, sync layer scaffolded.
+
+- [ ] Create Supabase project at supabase.com → get `SUPABASE_URL` + `SUPABASE_ANON_KEY`
+- [ ] Add to `.env.local`:
+  ```
+  VITE_SUPABASE_URL=https://xxxx.supabase.co
+  VITE_SUPABASE_ANON_KEY=your_anon_key
+  ```
+- [ ] Install: `npm install @supabase/supabase-js`
+- [ ] Create `src/lib/supabase.ts` — init Supabase client
+- [ ] Create all Supabase tables (mirror Dexie schema) with SQL in Supabase dashboard
+- [ ] Enable RLS on every table + add `users own their rows` policy
+- [ ] Enable Google OAuth in Supabase Auth dashboard
+- [ ] Create `src/lib/sync.ts` — `syncToSupabase()` and `pullFromSupabase()` helpers
+- [ ] Create `src/lib/auth.ts` — `signInWithGoogle()`, `signInWithMagicLink()`, `signOut()`, `getUser()`
+- [ ] Wire auth state to `settingsStore` — store `userId`, `isLoggedIn`, `syncEnabled`
+- [ ] On login → call `pullFromSupabase()` → populate all Dexie tables
+
+**Done when:** Google login works, session persists on reload, Supabase tables exist with RLS.
+
+---
+
 ## Phase 3 — Onboarding + Settings
 
 **Goal:** First-launch experience and Settings page work.
@@ -54,8 +78,10 @@ Each phase has a clear "done" criteria before moving on.
   - "Clear all data" danger button
 - [ ] Build onboarding overlay (shows if `cortex:onboarded` is not set):
   - Step 1: Enter name
-  - Step 2: Enter API key
-  - Step 3: Done → set `cortex:onboarded = 'true'` → redirect to Dashboard
+  - Step 2: Enter MiniMax API key
+  - Step 3: Sync option — "Sign in with Google to sync across devices" OR "Use locally only"
+  - Step 4: Done → set `cortex:onboarded = 'true'` → redirect to Dashboard
+- [ ] Add sync status indicator in sidebar footer (cloud icon — synced / syncing / offline / local-only)
 - [ ] Wire Settings form to `settingsStore`
 - [ ] Validate API key field is not empty before allowing AI features (show banner if missing)
 

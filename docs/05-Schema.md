@@ -1,7 +1,8 @@
 # 05 — Backend Schema: Data Model
 
-> No traditional backend. All data stored locally in **IndexedDB via Dexie.js**.
-> No server. No auth. No migrations. Just a typed local database.
+> **Hybrid local-first.** All data stored in **IndexedDB via Dexie.js** locally.
+> When signed in, data syncs to **Supabase PostgreSQL** in the background.
+> Every table has a `userId` field linking to the Supabase auth user.
 
 ---
 
@@ -47,6 +48,7 @@ export const db = new CortexDB()
 ```typescript
 interface Note {
   id?: number
+  userId?: string           // Supabase auth user ID (null if local-only)
   content: string           // raw text of the note
   createdAt: Date
   status: 'inbox' | 'processed' | 'archived'
@@ -61,6 +63,7 @@ interface Note {
 ```typescript
 interface JournalEntry {
   id?: number
+  userId?: string           // Supabase auth user ID
   date: string              // ISO date string: "2025-05-12"
   content: string           // markdown content
   wordCount: number
@@ -77,6 +80,7 @@ Index: `date` (unique-ish — one entry per day enforced in app logic)
 ```typescript
 interface WikiPage {
   id?: number
+  userId?: string           // Supabase auth user ID
   slug: string              // url-safe title: "machine-learning-basics"
   title: string             // display title: "Machine Learning Basics"
   content: string           // markdown content with [[wikilinks]]
@@ -95,6 +99,7 @@ Index: `slug` (must be unique — enforced in app logic)
 ```typescript
 interface Task {
   id?: number
+  userId?: string           // Supabase auth user ID
   title: string
   description?: string      // optional longer note
   status: 'todo' | 'in-progress' | 'done'
@@ -204,9 +209,51 @@ habitLogs (many) ────► habits (in localStorage, by habitId)
 
 ---
 
-## No Auth / No RLS
+## Supabase Auth
 
-Single-user local app. No authentication, no row-level security, no user IDs. All data belongs to the one person running the app on their machine.
+| | |
+|---|---|
+| Provider | Supabase Auth |
+| Methods | Google OAuth, Magic Link |
+| User table | Auto-managed by Supabase (`auth.users`) |
+| Session | JWT, auto-refreshed by `@supabase/supabase-js` |
+
+## Supabase Table Schema (mirrors Dexie)
+
+Each Dexie table has a corresponding Supabase table. All tables include:
+- `id` uuid PRIMARY KEY DEFAULT gen_random_uuid()
+- `user_id` uuid REFERENCES auth.users NOT NULL
+- `created_at` timestamptz DEFAULT now()
+
+```sql
+-- Row Level Security on every table
+ALTER TABLE notes ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "users own their notes"
+  ON notes FOR ALL
+  USING (auth.uid() = user_id);
+-- (repeat for all tables)
+```
+
+## Sync Layer (`src/lib/sync.ts`)
+
+```typescript
+// After every Dexie write, call sync in background:
+export async function syncToSupabase(table: string, record: any) {
+  const session = await supabase.auth.getSession()
+  if (!session.data.session) return  // not logged in, skip
+  await supabase.from(table).upsert({
+    ...record,
+    user_id: session.data.session.user.id
+  })
+}
+
+// On login, pull all cloud data into Dexie:
+export async function pullFromSupabase() {
+  const { data: notes } = await supabase.from('notes').select('*')
+  await db.notes.bulkPut(notes)
+  // repeat for all tables
+}
+```
 
 ---
 
