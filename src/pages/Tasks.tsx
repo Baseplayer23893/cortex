@@ -13,14 +13,16 @@ interface TaskItemProps {
   onToggle: (id: number) => void
   onUpdate: (id: number, updates: Partial<Task>) => void
   onDelete: (id: number) => void
+  onTagClick: (tag: string) => void
 }
 
-function TaskItem({ task, onToggle, onUpdate, onDelete }: TaskItemProps) {
+function TaskItem({ task, onToggle, onUpdate, onDelete, onTagClick }: TaskItemProps) {
   const [expanded, setExpanded] = useState(false)
   const [editTitle, setEditTitle] = useState(task.title)
   const [editDescription, setEditDescription] = useState(task.description || '')
   const [editDueDate, setEditDueDate] = useState(task.dueDate || '')
   const [editPriority, setEditPriority] = useState(task.priority)
+  const [editTags, setEditTags] = useState(task.tags?.join(', ') || '')
 
   const isDone = task.status === 'done'
   const priorityColors = {
@@ -31,11 +33,16 @@ function TaskItem({ task, onToggle, onUpdate, onDelete }: TaskItemProps) {
 
   const handleSave = () => {
     if (task.id) {
+      const tags = editTags
+        .split(',')
+        .map(t => t.trim())
+        .filter(Boolean)
       onUpdate(task.id, {
         title: editTitle,
         description: editDescription || undefined,
         dueDate: editDueDate || undefined,
         priority: editPriority,
+        tags: tags.length > 0 ? tags : undefined,
       })
       setExpanded(false)
     }
@@ -75,10 +82,23 @@ function TaskItem({ task, onToggle, onUpdate, onDelete }: TaskItemProps) {
             <span className={`w-2 h-2 rounded-full ${priorityColors[task.priority]}`} />
           )}
           {task.tags && task.tags.length > 0 && (
-            <span className="flex items-center gap-0.5 text-xs text-[var(--text-tertiary)]">
-              <TagIcon className="w-3 h-3" />
-              {task.tags.length}
-            </span>
+            <div className="flex items-center gap-1">
+              {task.tags.slice(0, 3).map(tag => (
+                <button
+                  key={tag}
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    onTagClick(tag)
+                  }}
+                  className="px-1.5 py-0.5 text-xs bg-[var(--accent-soft)] text-[var(--accent)] rounded hover:bg-[var(--accent)]/20 transition-colors"
+                >
+                  {tag}
+                </button>
+              ))}
+              {task.tags.length > 3 && (
+                <span className="text-xs text-[var(--text-tertiary)]">+{task.tags.length - 3}</span>
+              )}
+            </div>
           )}
           {expanded ? (
             <ChevronDown className="w-4 h-4 text-[var(--text-tertiary)]" />
@@ -135,6 +155,14 @@ function TaskItem({ task, onToggle, onUpdate, onDelete }: TaskItemProps) {
               </select>
             </div>
           </div>
+          <div>
+            <label className="block text-xs text-[var(--text-secondary)] mb-1">Tags (comma separated)</label>
+            <Input
+              value={editTags}
+              onChange={(e) => setEditTags(e.target.value)}
+              placeholder="e.g. work, urgent, project"
+            />
+          </div>
           <div className="flex justify-end gap-2">
             <Button size="sm" variant="secondary" onClick={() => setExpanded(false)}>Cancel</Button>
             <Button size="sm" onClick={handleSave}>Save</Button>
@@ -154,15 +182,21 @@ function AddTaskForm({ onAdd, onCancel }: AddTaskFormProps) {
   const [title, setTitle] = useState('')
   const [dueDate, setDueDate] = useState('')
   const [priority, setPriority] = useState<Task['priority']>('medium')
+  const [tagsInput, setTagsInput] = useState('')
 
   const handleSubmit = () => {
     if (!title.trim()) return
+    const tags = tagsInput
+      .split(',')
+      .map(t => t.trim())
+      .filter(Boolean)
     onAdd({
       title: title.trim(),
       description: '',
       status: 'todo',
       priority,
       dueDate: dueDate || undefined,
+      tags: tags.length > 0 ? tags : undefined,
       createdAt: new Date(),
     })
   }
@@ -195,6 +229,11 @@ function AddTaskForm({ onAdd, onCancel }: AddTaskFormProps) {
           <option value="high">High</option>
         </select>
       </div>
+      <Input
+        value={tagsInput}
+        onChange={(e) => setTagsInput(e.target.value)}
+        placeholder="Tags (comma separated, e.g. work, urgent)"
+      />
       <div className="flex justify-end gap-2">
         <Button size="sm" variant="secondary" onClick={onCancel}>Cancel</Button>
         <Button size="sm" onClick={handleSubmit} disabled={!title.trim()}>Add Task</Button>
@@ -210,11 +249,12 @@ interface TaskGroupProps {
   onUpdate: (id: number, updates: Partial<Task>) => void
   onDelete: (id: number) => void
   onAddClick: () => void
+  onTagClick: (tag: string) => void
   showAddButton?: boolean
   emptyMessage?: string
 }
 
-function TaskGroup({ title, tasks, onToggle, onUpdate, onDelete, onAddClick, showAddButton = true, emptyMessage }: TaskGroupProps) {
+function TaskGroup({ title, tasks, onToggle, onUpdate, onDelete, onAddClick, onTagClick, showAddButton = true, emptyMessage }: TaskGroupProps) {
   return (
     <div className="space-y-3">
       <div className="flex items-center justify-between">
@@ -239,6 +279,7 @@ function TaskGroup({ title, tasks, onToggle, onUpdate, onDelete, onAddClick, sho
               onToggle={onToggle}
               onUpdate={onUpdate}
               onDelete={onDelete}
+              onTagClick={onTagClick}
             />
           ))}
         </div>
@@ -292,6 +333,11 @@ export default function Tasks() {
 
   const handleDelete = async (id: number) => {
     await deleteTask(id)
+  }
+
+  const handleTagClick = (tag: string) => {
+    setFilter('tag')
+    setSelectedTag(tag)
   }
 
   const filterButtons: { label: string; value: FilterType }[] = [
@@ -369,6 +415,7 @@ export default function Tasks() {
                         onToggle={handleToggle}
                         onUpdate={handleUpdate}
                         onDelete={handleDelete}
+                        onTagClick={handleTagClick}
                       />
                     ))}
                   </div>
@@ -416,6 +463,7 @@ export default function Tasks() {
                     onToggle={handleToggle}
                     onUpdate={handleUpdate}
                     onDelete={handleDelete}
+                    onTagClick={handleTagClick}
                   />
                 ))}
               </div>
@@ -445,6 +493,7 @@ export default function Tasks() {
                     onToggle={handleToggle}
                     onUpdate={handleUpdate}
                     onDelete={handleDelete}
+                    onTagClick={handleTagClick}
                   />
                 ))}
               </div>
@@ -475,6 +524,7 @@ export default function Tasks() {
                 onUpdate={handleUpdate}
                 onDelete={handleDelete}
                 onAddClick={() => setAddingGroup('today')}
+                onTagClick={handleTagClick}
                 emptyMessage="No tasks due today"
               />
             )}
@@ -489,6 +539,7 @@ export default function Tasks() {
                 onUpdate={handleUpdate}
                 onDelete={handleDelete}
                 onAddClick={() => setAddingGroup('upcoming')}
+                onTagClick={handleTagClick}
                 emptyMessage="No upcoming tasks"
               />
             )}
@@ -503,6 +554,7 @@ export default function Tasks() {
                 onUpdate={handleUpdate}
                 onDelete={handleDelete}
                 onAddClick={() => setAddingGroup('someday')}
+                onTagClick={handleTagClick}
                 emptyMessage="No tasks without a due date"
               />
             )}
@@ -516,6 +568,7 @@ export default function Tasks() {
                 onToggle={handleToggle}
                 onUpdate={handleUpdate}
                 onDelete={handleDelete}
+                onTagClick={handleTagClick}
                 showAddButton={false}
                 emptyMessage="No completed tasks"
               />
