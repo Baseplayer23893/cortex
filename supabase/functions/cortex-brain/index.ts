@@ -93,6 +93,9 @@ Return ONLY valid JSON with this structure:
 
 Include sources from all data types. If the question asks about tasks, include 'goto-tasks' action. If about wiki, include 'goto-wiki'.`
 
+    const controller = new AbortController()
+    const timeout = setTimeout(() => controller.abort(), 30000)
+
     const nvidiaRes = await fetch('https://integrate.api.nvidia.com/v1/chat/completions', {
       method: 'POST',
       headers: {
@@ -103,7 +106,9 @@ Include sources from all data types. If the question asks about tasks, include '
         model: 'minimaxai/minimax-m2.7',
         messages: [{ role: 'system', content: systemPrompt }],
       }),
+      signal: controller.signal,
     })
+    clearTimeout(timeout)
 
     if (!nvidiaRes.ok) {
       const errorText = await nvidiaRes.text()

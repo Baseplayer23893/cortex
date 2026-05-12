@@ -23,7 +23,7 @@ export class CortexDB extends Dexie {
   constructor() {
     super('CortexDB')
     this.version(1).stores({
-      notes: '++id, createdAt, status, *tags',
+      notes: '++id, createdAt, status, *tags, source',
       journal: '++id, date',
       wiki: '++id, slug, updatedAt, *tags',
       tasks: '++id, dueDate, status, priority, *tags',

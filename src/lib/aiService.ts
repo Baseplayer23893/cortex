@@ -41,7 +41,12 @@ Focus on finding semantic connections even when titles don't match exactly.`
       body: { 
         prompt, 
         context: {
-          wikiPages: [],
+          wikiPages: (existingPages || []).filter(p => p.title !== currentTitle).map(p => ({
+            id: 0,
+            title: p.title,
+            slug: p.slug,
+            content: (p.content || '').slice(0, 500),
+          })),
           journalEntries: [],
           tasks: [],
           timetableBlocks: [],

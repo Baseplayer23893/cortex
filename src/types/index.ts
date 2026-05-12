@@ -7,6 +7,7 @@ export interface Note {
   wikiLinks?: string[]
   relatedWikiSlug?: string  // if linked to a wiki page
   aiProcessedAt?: Date
+  source?: string  // 'web', 'cli', etc.
 }
 
 export interface JournalEntry {

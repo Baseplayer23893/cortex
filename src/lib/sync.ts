@@ -21,7 +21,6 @@ export async function syncToSupabase<T extends DbTable>(
   const { error } = await supabase.from(table).upsert({
     ...record,
     user_id: userId,
-    id: record.id ? record.id.toString() : undefined,
   })
 
   return { error: error as Error | null }
@@ -33,8 +32,10 @@ export async function pullFromSupabase(): Promise<{ error: Error | null }> {
     return { error: new Error('Not logged in') }
   }
 
+  const errors: string[] = []
+
   try {
-    const [notes, journal, wiki, tasks, timetable, protocol, habitLogs, aiLogs] = await Promise.all([
+    const [notesRes, journalRes, wikiRes, tasksRes, timetableRes, protocolRes, habitLogsRes, aiLogsRes] = await Promise.allSettled([
       supabase.from('notes').select('*').eq('user_id', userId),
       supabase.from('journal').select('*').eq('user_id', userId),
       supabase.from('wiki').select('*').eq('user_id', userId),
@@ -45,16 +46,59 @@ export async function pullFromSupabase(): Promise<{ error: Error | null }> {
       supabase.from('aiLogs').select('*').eq('user_id', userId),
     ])
 
-    if (notes.data) await db.notes.bulkPut(notes.data.map(normalizeNote))
-    if (journal.data) await db.journal.bulkPut(journal.data.map(normalizeJournal))
-    if (wiki.data) await db.wiki.bulkPut(wiki.data.map(normalizeWiki))
-    if (tasks.data) await db.tasks.bulkPut(tasks.data.map(normalizeTask))
-    if (timetable.data) await db.timetable.bulkPut(timetable.data)
-    if (protocol.data) await db.protocol.bulkPut(protocol.data)
-    if (habitLogs.data) await db.habitLogs.bulkPut(habitLogs.data)
-    if (aiLogs.data) await db.aiLogs.bulkPut(aiLogs.data)
+    if (notesRes.status === 'fulfilled' && notesRes.value.data) {
+      await db.notes.bulkPut(notesRes.value.data.map(normalizeNote))
+    } else if (notesRes.status === 'rejected') {
+      errors.push(`notes: ${notesRes.reason}`)
+    }
 
-    return { error: null }
+    if (journalRes.status === 'fulfilled' && journalRes.value.data) {
+      await db.journal.bulkPut(journalRes.value.data.map(normalizeJournal))
+    } else if (journalRes.status === 'rejected') {
+      errors.push(`journal: ${journalRes.reason}`)
+    }
+
+    if (wikiRes.status === 'fulfilled' && wikiRes.value.data) {
+      await db.wiki.bulkPut(wikiRes.value.data.map(normalizeWiki))
+    } else if (wikiRes.status === 'rejected') {
+      errors.push(`wiki: ${wikiRes.reason}`)
+    }
+
+    if (tasksRes.status === 'fulfilled' && tasksRes.value.data) {
+      await db.tasks.bulkPut(tasksRes.value.data.map(normalizeTask))
+    } else if (tasksRes.status === 'rejected') {
+      errors.push(`tasks: ${tasksRes.reason}`)
+    }
+
+    if (timetableRes.status === 'fulfilled' && timetableRes.value.data) {
+      await db.timetable.bulkPut(timetableRes.value.data.map(normalizeTimetable))
+    } else if (timetableRes.status === 'rejected') {
+      errors.push(`timetable: ${timetableRes.reason}`)
+    }
+
+    if (protocolRes.status === 'fulfilled' && protocolRes.value.data) {
+      await db.protocol.bulkPut(protocolRes.value.data.map(normalizeProtocol))
+    } else if (protocolRes.status === 'rejected') {
+      errors.push(`protocol: ${protocolRes.reason}`)
+    }
+
+    if (habitLogsRes.status === 'fulfilled' && habitLogsRes.value.data) {
+      await db.habitLogs.bulkPut(habitLogsRes.value.data.map(normalizeHabitLog))
+    } else if (habitLogsRes.status === 'rejected') {
+      errors.push(`habitLogs: ${habitLogsRes.reason}`)
+    }
+
+    if (aiLogsRes.status === 'fulfilled' && aiLogsRes.value.data) {
+      await db.aiLogs.bulkPut(aiLogsRes.value.data.map(normalizeAILog))
+    } else if (aiLogsRes.status === 'rejected') {
+      errors.push(`aiLogs: ${aiLogsRes.reason}`)
+    }
+
+    if (errors.length > 0) {
+      console.warn('Partial sync failures:', errors)
+    }
+
+    return { error: errors.length > 0 ? new Error(`Sync partially failed: ${errors.join(', ')}`) : null }
   } catch (e) {
     return { error: e as Error }
   }
@@ -63,7 +107,7 @@ export async function pullFromSupabase(): Promise<{ error: Error | null }> {
 function normalizeNote(note: any): Note {
   return {
     ...note,
-    id: parseInt(note.id) || undefined,
+    id: note.local_id || crypto.randomUUID(),
     createdAt: new Date(note.created_at),
   }
 }
@@ -71,7 +115,7 @@ function normalizeNote(note: any): Note {
 function normalizeJournal(entry: any): JournalEntry {
   return {
     ...entry,
-    id: parseInt(entry.id) || undefined,
+    id: entry.local_id || crypto.randomUUID(),
     createdAt: new Date(entry.created_at),
     updatedAt: new Date(entry.updated_at || entry.created_at),
   }
@@ -80,7 +124,7 @@ function normalizeJournal(entry: any): JournalEntry {
 function normalizeWiki(page: any): WikiPage {
   return {
     ...page,
-    id: parseInt(page.id) || undefined,
+    id: page.local_id || crypto.randomUUID(),
     createdAt: new Date(page.created_at),
     updatedAt: new Date(page.updated_at),
   }
@@ -89,9 +133,40 @@ function normalizeWiki(page: any): WikiPage {
 function normalizeTask(task: any): Task {
   return {
     ...task,
-    id: parseInt(task.id) || undefined,
+    id: task.local_id || crypto.randomUUID(),
     createdAt: new Date(task.created_at),
     completedAt: task.completed_at ? new Date(task.completed_at) : undefined,
+  }
+}
+
+function normalizeTimetable(block: any): TimetableBlock {
+  return {
+    ...block,
+    id: block.local_id || crypto.randomUUID(),
+  }
+}
+
+function normalizeProtocol(entry: any): ProtocolEntry {
+  return {
+    ...entry,
+    id: entry.local_id || crypto.randomUUID(),
+    createdAt: new Date(entry.created_at),
+  }
+}
+
+function normalizeHabitLog(log: any): HabitLog {
+  return {
+    ...log,
+    id: log.local_id || crypto.randomUUID(),
+    date: new Date(log.date),
+  }
+}
+
+function normalizeAILog(log: any): AILog {
+  return {
+    ...log,
+    id: log.local_id || crypto.randomUUID(),
+    createdAt: new Date(log.created_at),
   }
 }
 
@@ -99,7 +174,7 @@ export type SyncStatus = 'synced' | 'syncing' | 'offline' | 'local-only'
 
 export async function checkSyncStatus(): Promise<SyncStatus> {
   const { data: { session } } = await supabase.auth.getSession()
-  
+
   if (!session) {
     return 'local-only'
   }

@@ -46,7 +46,7 @@ export default function AIBrain() {
   }, [messages])
 
   const handleSend = async () => {
-    if (!input.trim() || loading || !apiKey) return
+    if (!input.trim() || loading) return
 
     const userMessage: ChatMessage = {
       id: Date.now().toString(),
@@ -127,9 +127,9 @@ export default function AIBrain() {
           <BrainIcon className="w-16 h-16 text-[var(--accent)] mx-auto mb-4" />
           <h2 className="text-xl font-semibold mb-2">AI Brain</h2>
           <p className="text-[var(--text-secondary)] mb-4">
-            Add your API key in Settings to enable AI features.
+            Your AI Brain is connected via NVIDIA NIM. Configure your API key in Settings for additional AI providers.
           </p>
-          <Button onClick={() => navigate('/settings')}>Go to Settings</Button>
+          <Button onClick={() => navigate('/settings')}>Configure AI</Button>
         </div>
       </div>
     )
